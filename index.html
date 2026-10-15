@@ -127,7 +127,9 @@
     失败只因瞄准差了半度，与运气无关。<br>
     🎯 拖拽瞄准松手发射；发射前可用<b>方向键微调（0.5° / 0.1 力度）</b>，回车发射——狙击手模式。<br>
     ⛽ 后期关卡限制发射力度，直线到不了——你需要<b>引力弹弓</b>。黑洞会吞噬一切，但它的引力也是工具。<br>
-    ✦ 沿途收集 3 枚星尘、在标准发射数内过关，拿满 3 星。
+    ☀️ 进阶篇（13 关起）：<b>斥力星</b>反推弹道、<b>黑洞上轨道巡逻</b>、<b>目标星也在移动</b>（金色虚迹是它的未来，<br>
+    和你的弹道同一时间轴——两条时间线要在同一刻相交）、最难的关只给你看一小段预览。<br>
+    ✦ 沿途收集 3 枚星尘、在标准发射数内过关，拿满 3 星。过关才解锁下一关。
   </div>
   <div><button class="btn" id="playBtn">开 始</button></div>
 </div>
@@ -252,12 +254,67 @@ const LEVELS = [
       {r:46, orbit:{cx:800,cy:450,R:360,w:0.007,ph:4.2}}],
     holes:[],
     dust:[[800,80],[800,820],[1200,450]] },
+
+  // ============ 进阶篇：斥力星 / 移动黑洞 / 移动标靶 / 短预览 ============
+  { name:'斥力', par:3, maxPow:6,
+    start:[180,450], target:[1420,450],
+    planets:[{x:800,y:260,r:60},{x:800,y:660,r:40,rep:true}], holes:[],
+    dust:[[560,420],[800,460],[1150,430]] },
+
+  { name:'引斥双星', par:3, maxPow:5,
+    start:[180,650], target:[1430,250],
+    planets:[{x:650,y:300,r:62},{x:950,y:600,r:56,rep:true}], holes:[],
+    dust:[[480,500],[840,420],[1180,320]] },
+
+  { name:'动态黑洞', par:4, maxPow:5.5,
+    start:[180,450], target:[1420,450],
+    planets:[],
+    holes:[{orbit:{cx:800,cy:450,R:170,w:0.015,ph:0}}],
+    dust:[[620,380],[800,450],[1120,400]] },
+
+  { name:'移动标靶', par:4, maxPow:6,
+    start:[180,450], target:[1150,450],
+    targetOrbit:{cx:1150,cy:450,R:180,w:0.012,ph:Math.PI/2},
+    planets:[{x:700,y:450,r:55}], holes:[],
+    dust:[[520,340],[950,560],[1150,200]] },
+
+  { name:'盾与矛', par:4, maxPow:6,
+    start:[180,650], target:[1400,450],
+    planets:[{x:700,y:250,r:60},{x:1400,y:300,r:30,rep:true}], holes:[],
+    dust:[[500,520],[900,430],[1300,560]] },
+
+  { name:'引力狂潮', par:4, maxPow:5, prevCap:400,
+    start:[160,200], target:[1460,700],
+    planets:[{x:400,y:600,r:55},{x:850,y:250,r:60},{x:1150,y:650,r:58}],
+    holes:[{orbit:{cx:800,cy:450,R:260,w:-0.01,ph:1.5}}],
+    dust:[[320,380],[820,480],[1280,520]] },
+
+  { name:'候鸟', par:5, maxPow:5, prevCap:400,
+    start:[180,300], target:[1150,600],
+    targetOrbit:{cx:1150,cy:600,R:150,w:-0.014,ph:0},
+    planets:[{r:50, orbit:{cx:600,cy:450,R:160,w:0.018,ph:Math.PI}}], holes:[],
+    dust:[[420,330],[820,520],[1150,400]] },
+
+  { name:'奇点终章', par:5, maxPow:4.5, prevCap:300,
+    start:[140,250], target:[1460,650],
+    planets:[
+      {x:800,y:450,r:54,rep:true},
+      {r:48, orbit:{cx:800,cy:450,R:280,w:0.013,ph:0}},
+      {r:48, orbit:{cx:800,cy:450,R:280,w:0.013,ph:Math.PI}}],
+    holes:[{x:1250,y:300}],
+    dust:[[420,350],[800,760],[1200,540]] },
 ];
 
 // ---------------- 天体位置（时间函数，确定性核心） ----------------
 function bodyPos(b, t) {
   if (!b.orbit) return { x: b.x, y: b.y };
   const o = b.orbit;
+  return { x: o.cx + o.R * Math.cos(o.w * t + o.ph), y: o.cy + o.R * Math.sin(o.w * t + o.ph) };
+}
+// 目标星位置（支持移动标靶）
+function targetPos(L, t) {
+  if (!L.targetOrbit) return { x: L.target[0], y: L.target[1] };
+  const o = L.targetOrbit;
   return { x: o.cx + o.R * Math.cos(o.w * t + o.ph), y: o.cy + o.R * Math.sin(o.w * t + o.ph) };
 }
 
@@ -274,7 +331,7 @@ function simulate(L, angleRad, power, recordEvery = 0, maxSteps = MAX_STEPS) {
       const dx = pp.x - x, dy = pp.y - y;
       const d2 = dx * dx + dy * dy, d = Math.sqrt(d2);
       if (d < p.r + COMET_R) return { result: 'crash', path, dustHit: [...dustHit], steps: t, at: {x, y} };
-      const a = G * p.r * p.r / d2;
+      const a = G * p.r * p.r / d2 * (p.rep ? -1 : 1);   // 斥力星反推
       ax += a * dx / d; ay += a * dy / d;
     }
     for (const h of L.holes) {
@@ -294,7 +351,8 @@ function simulate(L, angleRad, power, recordEvery = 0, maxSteps = MAX_STEPS) {
       }
     });
     if (recordEvery && t % recordEvery === 0) path.push({ x, y });
-    const tdx = L.target[0] - x, tdy = L.target[1] - y;
+    const tp = targetPos(L, t);
+    const tdx = tp.x - x, tdy = tp.y - y;
     if (tdx * tdx + tdy * tdy < TARGET_R * TARGET_R) return { result: 'win', path, dustHit: [...dustHit], steps: t, at: {x, y} };
     if (x < -OOB || x > VW + OOB || y < -OOB || y > VH + OOB) return { result: 'out', path, dustHit: [...dustHit], steps: t, at: {x, y} };
   }
@@ -432,7 +490,7 @@ function winLevel() {
   $('winStars').textContent = '★'.repeat(stars) + '☆'.repeat(3 - stars);
   $('winDetail').textContent =
     `发射 ${GT.shots} 次（标准 ${L().par}）${underPar ? '✓' : '✗'} · 星尘 ${GT.dustGot.size}/3 ${dustAll ? '✓' : '✗'}` +
-    (GT.li === LEVELS.length - 1 ? ' · 你征服了三体！' : '');
+    (GT.li === LEVELS.length - 1 ? ' · 你征服了奇点，这个宇宙没有你打不中的星！' : '');
   $('nextBtn').style.display = GT.li === LEVELS.length - 1 ? 'none' : '';
   show('winPanel');
   for (let i = 0; i < 6; i++) setTimeout(() => spawnMeteor(), i * 130);
@@ -449,7 +507,7 @@ function flightStep() {
     const dx = pp.x - GT.cx, dy = pp.y - GT.cy;
     const d2 = dx * dx + dy * dy, d = Math.sqrt(d2);
     if (d < p.r + COMET_R) { endFlight('crash', GT.cx, GT.cy); return; }
-    const a = G * p.r * p.r / d2;
+    const a = G * p.r * p.r / d2 * (p.rep ? -1 : 1);
     ax += a * dx / d; ay += a * dy / d;
   }
   for (const h of l.holes) {
@@ -472,8 +530,9 @@ function flightStep() {
   });
   GT.trail.push({ x: GT.cx, y: GT.cy });
   if (GT.trail.length > 260) GT.trail.shift();
-  const tdx = l.target[0] - GT.cx, tdy = l.target[1] - GT.cy;
-  if (tdx * tdx + tdy * tdy < TARGET_R * TARGET_R) { burst(l.target[0], l.target[1], '#ffd97a', 30); winLevel(); return; }
+  const tpNow = targetPos(l, t);
+  const tdx = tpNow.x - GT.cx, tdy = tpNow.y - GT.cy;
+  if (tdx * tdx + tdy * tdy < TARGET_R * TARGET_R) { burst(tpNow.x, tpNow.y, '#ffd97a', 30); winLevel(); return; }
   if (GT.cx < -OOB || GT.cx > VW + OOB || GT.cy < -OOB || GT.cy > VH + OOB) { endFlight('out'); return; }
   if (GT.ft >= MAX_STEPS) { endFlight('timeout'); }
 }
@@ -563,27 +622,55 @@ function drawWorld(tt) {
   const l = L();
   const t = GT.flying ? GT.ft : 0;    // 时间静止：未飞行时天体停在初相位
 
-  // 轨道虚线
+  // 轨道虚线（行星 / 黑洞 / 移动标靶共用）
   ctx.setLineDash([3 * SC, 6 * SC]);
   ctx.strokeStyle = 'rgba(255,255,255,0.1)';
   ctx.lineWidth = 1;
   for (const p of l.planets) if (p.orbit) {
     ctx.beginPath(); ctx.arc(vx(p.orbit.cx), vy(p.orbit.cy), p.orbit.R * SC, 0, 6.283); ctx.stroke();
   }
+  for (const h of l.holes) if (h.orbit) {
+    ctx.strokeStyle = 'rgba(184,138,255,0.18)';
+    ctx.beginPath(); ctx.arc(vx(h.orbit.cx), vy(h.orbit.cy), h.orbit.R * SC, 0, 6.283); ctx.stroke();
+  }
+  if (l.targetOrbit) {
+    ctx.strokeStyle = 'rgba(255,217,122,0.22)';
+    ctx.beginPath(); ctx.arc(vx(l.targetOrbit.cx), vy(l.targetOrbit.cy), l.targetOrbit.R * SC, 0, 6.283); ctx.stroke();
+  }
   ctx.setLineDash([]);
 
-  // 行星
+  // 行星（蓝＝引力，热白橙＝斥力星）
   for (const p of l.planets) {
     const pp = bodyPos(p, t);
     const px = vx(pp.x), py = vy(pp.y), pr = p.r * SC;
     const g3 = ctx.createRadialGradient(px - pr * 0.3, py - pr * 0.3, pr * 0.1, px, py, pr);
-    g3.addColorStop(0, '#8fb8ff'); g3.addColorStop(0.6, '#3a5ba0'); g3.addColorStop(1, '#17264d');
+    if (p.rep) {
+      g3.addColorStop(0, '#fff6e8'); g3.addColorStop(0.55, '#ffb35c'); g3.addColorStop(1, '#a33c12');
+      ctx.shadowColor = '#ffab4a';
+    } else {
+      g3.addColorStop(0, '#8fb8ff'); g3.addColorStop(0.6, '#3a5ba0'); g3.addColorStop(1, '#17264d');
+      ctx.shadowColor = '#5d8aff';
+    }
     ctx.fillStyle = g3;
-    ctx.shadowColor = '#5d8aff'; ctx.shadowBlur = 20 * SC;
+    ctx.shadowBlur = 20 * SC;
     ctx.beginPath(); ctx.arc(px, py, pr, 0, 6.283); ctx.fill();
     ctx.shadowBlur = 0;
-    // 引力范围提示圈
-    ctx.strokeStyle = 'rgba(140,180,255,0.1)';
+    if (p.rep) {
+      // 斥力星：向外的短射线
+      ctx.strokeStyle = 'rgba(255,171,74,0.55)';
+      ctx.lineWidth = 1.6 * SC;
+      for (let k = 0; k < 8; k++) {
+        const a = k * Math.PI / 4 + tt * 0.6;
+        ctx.beginPath();
+        ctx.moveTo(px + Math.cos(a) * pr * 1.15, py + Math.sin(a) * pr * 1.15);
+        ctx.lineTo(px + Math.cos(a) * pr * 1.5, py + Math.sin(a) * pr * 1.5);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = 'rgba(255,171,74,0.12)';
+    } else {
+      ctx.strokeStyle = 'rgba(140,180,255,0.1)';
+    }
+    // 力场范围提示圈
     ctx.beginPath(); ctx.arc(px, py, pr * 2.6, 0, 6.283); ctx.stroke();
   }
 
@@ -622,8 +709,9 @@ function drawWorld(tt) {
     ctx.shadowBlur = 0;
   });
 
-  // 目标星
-  const tx = vx(l.target[0]), ty = vy(l.target[1]);
+  // 目标星（支持移动标靶：未飞行时停在初相位）
+  const tcur = targetPos(l, t);
+  const tx = vx(tcur.x), ty = vy(tcur.y);
   const tp = 0.8 + 0.2 * Math.sin(tt * 3);
   ctx.strokeStyle = `rgba(255,217,122,${tp})`;
   ctx.lineWidth = 2 * SC;
@@ -648,9 +736,20 @@ function drawWorld(tt) {
     ctx.moveTo(fx + s, fy - s); ctx.lineTo(fx - s, fy + s); ctx.stroke();
   }
 
-  // 瞄准预览（确定性：与真实飞行同公式）
+  // 瞄准预览（确定性：与真实飞行同公式；后期关卡预览更短）
   if (!GT.flying && GT.scene === 'play' && GT.aim.has) {
-    const r = simulate(l, GT.aim.angle, GT.aim.power, 4, 620);
+    const cap = l.prevCap || 620;
+    // 移动标靶：画目标的金色未来轨迹，与弹道虚线同一时间轴
+    if (l.targetOrbit) {
+      ctx.fillStyle = '#ffd97a';
+      for (let ti = 4; ti <= cap; ti += 20) {
+        const tp2 = targetPos(l, ti);
+        ctx.globalAlpha = Math.max(0.12, 0.55 - ti / cap * 0.45);
+        ctx.beginPath(); ctx.arc(vx(tp2.x), vy(tp2.y), 2.4 * SC, 0, 6.283); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+    const r = simulate(l, GT.aim.angle, GT.aim.power, 4, cap);
     const n = r.path.length;
     ctx.shadowColor = '#5fe8ff';
     r.path.forEach((pt, i) => {
@@ -700,7 +799,7 @@ function drawWorld(tt) {
   ctx.shadowBlur = 0;
 
   // 时间静止提示
-  if (!GT.flying && l.planets.some(p => p.orbit)) {
+  if (!GT.flying && (l.planets.some(p => p.orbit) || l.holes.some(h => h.orbit) || l.targetOrbit)) {
     ctx.fillStyle = 'rgba(255,255,255,0.35)';
     ctx.font = `${12 * SC}px "Microsoft YaHei", sans-serif`;
     ctx.textAlign = 'center';
