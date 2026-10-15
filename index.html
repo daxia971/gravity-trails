@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>引力星途 · Gravity Trails</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #02030f;
+    touch-action: none; user-select: none; -webkit-user-select: none; }
+  canvas { display: block; position: fixed; inset: 0; }
+  .ui { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; }
+
+  .hud {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 5;
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 16px; pointer-events: none; color: rgba(255,255,255,0.9);
+  }
+  .hud .box { background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 12px; padding: 6px 14px; backdrop-filter: blur(6px); font-size: 14px; }
+  .hud .btn-s { pointer-events: auto; cursor: pointer; }
+  .hud .btn-s:hover { background: rgba(255,255,255,0.18); }
+  #dustHud { letter-spacing: 3px; }
+  #aimInfo { font-variant-numeric: tabular-nums; min-width: 150px; text-align: center; }
+
+  .overlay {
+    position: fixed; inset: 0; z-index: 10; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center;
+    background: rgba(2,3,15,0.85); backdrop-filter: blur(6px); color: #fff; padding: 20px;
+  }
+  .overlay.hidden { display: none; }
+  .overlay h1 { font-size: clamp(26px, 5vw, 42px); letter-spacing: 10px; font-weight: 300;
+    text-shadow: 0 0 28px rgba(140,180,255,0.9); margin-bottom: 16px; }
+  .overlay h2 { font-size: clamp(18px, 3vw, 26px); letter-spacing: 6px; font-weight: 300; margin-bottom: 14px; }
+  .overlay .sub { font-size: clamp(12px, 2vw, 15px); line-height: 2.1; color: rgba(255,255,255,0.75);
+    margin-bottom: 24px; max-width: 640px; }
+  .overlay .sub b { color: #ffd97a; font-weight: 600; }
+  .btn {
+    cursor: pointer; border: 1px solid rgba(255,255,255,0.35); background: rgba(255,255,255,0.1);
+    color: #fff; font-size: 16px; letter-spacing: 5px; padding: 11px 38px; border-radius: 999px;
+    font-family: inherit; backdrop-filter: blur(6px); transition: background .2s, transform .2s; margin: 0 8px;
+  }
+  .btn:hover { background: rgba(255,255,255,0.22); transform: scale(1.05); }
+
+  .lvgrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 26px; }
+  .lv {
+    width: clamp(64px, 10vw, 92px); height: clamp(64px, 10vw, 92px);
+    border: 1px solid rgba(255,255,255,0.2); border-radius: 14px; cursor: pointer;
+    background: rgba(255,255,255,0.06); color: #fff; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 4px; transition: transform .15s, border-color .2s;
+  }
+  .lv:hover { transform: scale(1.07); border-color: #ffd97a; }
+  .lv.locked { opacity: 0.32; cursor: not-allowed; }
+  .lv .n { font-size: 20px; }
+  .lv .s { font-size: 11px; letter-spacing: 1px; color: #ffd97a; }
+  .lv .nm { font-size: 10px; color: rgba(255,255,255,0.55); }
+
+  #winStars { font-size: 34px; letter-spacing: 8px; color: #ffd97a; margin-bottom: 10px;
+    text-shadow: 0 0 20px rgba(255,217,122,0.8); }
+  #winDetail { font-size: 14px; color: rgba(255,255,255,0.65); margin-bottom: 26px; }
+
+  #toast {
+    position: fixed; top: 16%; left: 50%; transform: translateX(-50%); z-index: 8;
+    color: #fff; font-size: clamp(14px, 2.6vw, 20px); letter-spacing: 3px;
+    text-shadow: 0 0 16px rgba(140,180,255,0.9); opacity: 0; transition: opacity .35s;
+    pointer-events: none; white-space: nowrap; font-family: "Microsoft YaHei", sans-serif;
+  }
+  .hint-bottom {
+    position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%);
+    color: rgba(255,255,255,0.3); font-size: 11px; letter-spacing: 2px; z-index: 5;
+    font-family: "Microsoft YaHei", sans-serif; pointer-events: none; white-space: nowrap;
+  }
+
+  /* ---- 手机端微调按钮 ---- */
+  .mctl {
+    position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
+    z-index: 6; display: none; gap: 10px;
+  }
+  .mctl.on { display: flex; }
+  .mbtn {
+    width: 52px; height: 52px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.3);
+    background: rgba(255,255,255,0.1); color: #fff; font-size: 17px; cursor: pointer;
+    backdrop-filter: blur(6px); font-family: "Microsoft YaHei", sans-serif;
+    display: flex; align-items: center; justify-content: center; touch-action: none;
+  }
+  .mbtn:active { background: rgba(255,255,255,0.28); }
+  .mbtn.go { width: 68px; height: 68px; font-size: 24px; border-color: #ffd97a;
+    background: rgba(255,217,122,0.15); margin-top: -8px; }
+
+  /* 小屏 HUD 收紧 */
+  @media (max-width: 760px) {
+    .hud { flex-wrap: wrap; gap: 6px; padding: 8px; justify-content: center; }
+    .hud .box { font-size: 11px; padding: 4px 9px; border-radius: 9px; }
+    #aimInfo { min-width: 0; }
+    .hint-bottom { display: none; }
+    .lvgrid { grid-template-columns: repeat(3, 1fr); }
+  }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+
+<div class="hud ui">
+  <div class="box" id="lvHud">第 1 关</div>
+  <div class="box" id="aimInfo">拖拽瞄准</div>
+  <div class="box" id="shotHud">发射 0 / 标准 1</div>
+  <div class="box" id="dustHud">✦✦✦</div>
+  <div class="box btn-s" id="retryBtn">↺ 重瞄</div>
+  <div class="box btn-s" id="menuBtn">☰ 选关</div>
+</div>
+<div id="toast" class="ui"></div>
+<div class="hint-bottom ui">拖拽发射 · ←→ 微调角度 · ↑↓ 微调力度 · 回车发射 · 飞行中点击中止</div>
+
+<div class="mctl ui" id="mctl">
+  <button class="mbtn" data-act="angL">↶</button>
+  <button class="mbtn" data-act="powD">力−</button>
+  <button class="mbtn go" data-act="go">🚀</button>
+  <button class="mbtn" data-act="powU">力＋</button>
+  <button class="mbtn" data-act="angR">↷</button>
+</div>
+
+<div class="overlay ui" id="intro">
+  <h1>引力星途</h1>
+  <div class="sub">
+    发射彗星，命中目标星。行星的<b>引力会弯曲弹道</b>——有时是阻碍，有时是唯一的路。<br>
+    ⏳ <b>时间只在彗星飞行时流动</b>：行星轨道每次发射都从同一相位重演，这个宇宙完全确定，<br>
+    失败只因瞄准差了半度，与运气无关。<br>
+    🎯 拖拽瞄准松手发射；发射前可用<b>方向键微调（0.5° / 0.1 力度）</b>，回车发射——狙击手模式。<br>
+    ⛽ 后期关卡限制发射力度，直线到不了——你需要<b>引力弹弓</b>。黑洞会吞噬一切，但它的引力也是工具。<br>
+    ✦ 沿途收集 3 枚星尘、在标准发射数内过关，拿满 3 星。
+  </div>
+  <div><button class="btn" id="playBtn">开 始</button></div>
+</div>
+
+<div class="overlay ui hidden" id="levelSel">
+  <h2>选 关</h2>
+  <div class="lvgrid" id="lvGrid"></div>
+  <button class="btn" id="backBtn">返 回</button>
+</div>
+
+<div class="overlay ui hidden" id="winPanel">
+  <h2 id="winTitle">关 卡 完 成</h2>
+  <div id="winStars">★★★</div>
+  <div id="winDetail"></div>
+  <div>
+    <button class="btn" id="againBtn">重 玩</button>
+    <button class="btn" id="nextBtn">下一关</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ================================================================
+//  引力星途 Gravity Trails
+//  确定性引力弹道解谜：时间只在彗星飞行时流动
+// ================================================================
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const VW = 1600, VH = 900;              // 虚拟场地
+let W = 0, H = 0, SC = 1, SOX = 0, SOY = 0;
+
+function layout() {
+  W = cv.width = innerWidth; H = cv.height = innerHeight;
+  SC = Math.min(W / VW, H / VH);
+  SOX = (W - VW * SC) / 2; SOY = (H - VH * SC) / 2;
+}
+layout();
+setInterval(() => { if (W !== innerWidth || H !== innerHeight) { layout(); makeBgStars(); } }, 500);
+const vx = x => SOX + x * SC, vy = y => SOY + y * SC;   // 虚拟→屏幕
+const sx = x => (x - SOX) / SC, sy = y => (y - SOY) / SC; // 屏幕→虚拟
+
+// ---------------- 物理常数 ----------------
+const G = 0.5;
+const COMET_R = 5;
+const TARGET_R = 28;
+const HOLE_KILL = 26;
+const HOLE_M = 16000;
+const DUST_R = 20;
+const MAX_STEPS = 2600;
+const OOB = 140;
+
+// ---------------- 关卡数据 ----------------
+// planet: {x,y,r, orbit?:{cx,cy,R,w,ph}}  质量 = r*r
+// hole: {x,y, orbit?}   dust: [[x,y]]
+const LEVELS = [
+  { name:'初航', par:1, maxPow:7,
+    start:[180,450], target:[1420,450], planets:[], holes:[],
+    dust:[[600,450],[900,450],[1200,450]] },
+
+  { name:'绕行', par:1, maxPow:7,
+    start:[180,450], target:[1420,450],
+    planets:[{x:800,y:450,r:72}], holes:[],
+    dust:[[700,220],[950,250],[1200,340]] },
+
+  { name:'引力透镜', par:2, maxPow:6,
+    start:[180,250], target:[1420,650],
+    planets:[{x:820,y:420,r:62}], holes:[],
+    dust:[[640,300],[980,480],[1220,570]] },
+
+  { name:'双星走廊', par:2, maxPow:7,
+    start:[180,450], target:[1430,450],
+    planets:[{x:700,y:240,r:64},{x:900,y:660,r:64}], holes:[],
+    dust:[[620,400],[830,470],[1150,420]] },
+
+  { name:'弹弓', par:3, maxPow:4.2,
+    start:[180,700], target:[1430,180],
+    planets:[{x:720,y:480,r:88}], holes:[],
+    dust:[[560,620],[900,330],[1200,240]] },
+
+  { name:'黑洞初见', par:2, maxPow:6,
+    start:[180,450], target:[1420,450],
+    planets:[], holes:[{x:800,y:450}],
+    dust:[[700,210],[1000,260],[1250,360]] },
+
+  { name:'针眼', par:3, maxPow:5,
+    start:[180,450], target:[1420,450],
+    planets:[], holes:[{x:780,y:360},{x:830,y:560}],
+    dust:[[600,430],[808,462],[1100,440]] },
+
+  { name:'双星系统', par:3, maxPow:6,
+    start:[180,450], target:[1430,450],
+    planets:[
+      {r:52, orbit:{cx:800,cy:450,R:190,w:0.012,ph:0}},
+      {r:52, orbit:{cx:800,cy:450,R:190,w:0.012,ph:Math.PI}}],
+    holes:[],
+    dust:[[800,450],[1050,380],[1250,420]] },
+
+  { name:'行星之舞', par:3, maxPow:5.5,
+    start:[180,450], target:[1430,450],
+    planets:[
+      {x:820,y:450,r:56},
+      {r:40, orbit:{cx:820,cy:450,R:240,w:0.016,ph:Math.PI/2}}],
+    holes:[],
+    dust:[[560,350],[820,160],[1150,360]] },
+
+  { name:'黑洞弹弓', par:4, maxPow:3.6,
+    start:[180,720], target:[1480,220],
+    planets:[{x:1010,y:620,r:66}], holes:[{x:660,y:360}],
+    dust:[[520,560],[880,420],[1260,300]] },
+
+  { name:'引力迷宫', par:4, maxPow:6,
+    start:[140,800], target:[1460,140],
+    planets:[{x:500,y:560,r:58},{x:900,y:680,r:54},{x:1050,y:330,r:60},{x:600,y:200,r:52}],
+    holes:[{x:800,y:470}],
+    dust:[[380,650],[840,250],[1240,220]] },
+
+  { name:'三体', par:5, maxPow:4,
+    start:[160,450], target:[1460,450],
+    planets:[
+      {r:46, orbit:{cx:800,cy:450,R:130,w:0.02,ph:0}},
+      {r:46, orbit:{cx:800,cy:450,R:250,w:-0.011,ph:2.1}},
+      {r:46, orbit:{cx:800,cy:450,R:360,w:0.007,ph:4.2}}],
+    holes:[],
+    dust:[[800,80],[800,820],[1200,450]] },
+];
+
+// ---------------- 天体位置（时间函数，确定性核心） ----------------
+function bodyPos(b, t) {
+  if (!b.orbit) return { x: b.x, y: b.y };
+  const o = b.orbit;
+  return { x: o.cx + o.R * Math.cos(o.w * t + o.ph), y: o.cy + o.R * Math.sin(o.w * t + o.ph) };
+}
+
+// ---------------- 纯函数弹道模拟（预览/飞行/求解器共用） ----------------
+// 返回 {result:'win'|'crash'|'hole'|'out'|'timeout', path:[...], dustHit:[idx...], steps}
+function simulate(L, angleRad, power, recordEvery = 0, maxSteps = MAX_STEPS) {
+  let x = L.start[0], y = L.start[1];
+  let vxv = Math.cos(angleRad) * power, vyv = Math.sin(angleRad) * power;
+  const path = [], dustHit = new Set();
+  for (let t = 1; t <= maxSteps; t++) {
+    let ax = 0, ay = 0;
+    for (const p of L.planets) {
+      const pp = bodyPos(p, t);
+      const dx = pp.x - x, dy = pp.y - y;
+      const d2 = dx * dx + dy * dy, d = Math.sqrt(d2);
+      if (d < p.r + COMET_R) return { result: 'crash', path, dustHit: [...dustHit], steps: t, at: {x, y} };
+      const a = G * p.r * p.r / d2;
+      ax += a * dx / d; ay += a * dy / d;
+    }
+    for (const h of L.holes) {
+      const hp = bodyPos(h, t);
+      const dx = hp.x - x, dy = hp.y - y;
+      const d2 = dx * dx + dy * dy, d = Math.sqrt(d2);
+      if (d < HOLE_KILL) return { result: 'hole', path, dustHit: [...dustHit], steps: t, at: {x, y} };
+      const a = G * HOLE_M / d2;
+      ax += a * dx / d; ay += a * dy / d;
+    }
+    vxv += ax; vyv += ay;
+    x += vxv; y += vyv;
+    L.dust.forEach((dpt, i) => {
+      if (!dustHit.has(i)) {
+        const ddx = dpt[0] - x, ddy = dpt[1] - y;
+        if (ddx * ddx + ddy * ddy < DUST_R * DUST_R) dustHit.add(i);
+      }
+    });
+    if (recordEvery && t % recordEvery === 0) path.push({ x, y });
+    const tdx = L.target[0] - x, tdy = L.target[1] - y;
+    if (tdx * tdx + tdy * tdy < TARGET_R * TARGET_R) return { result: 'win', path, dustHit: [...dustHit], steps: t, at: {x, y} };
+    if (x < -OOB || x > VW + OOB || y < -OOB || y > VH + OOB) return { result: 'out', path, dustHit: [...dustHit], steps: t, at: {x, y} };
+  }
+  return { result: 'timeout', path, dustHit: [...dustHit], steps: maxSteps, at: {x, y} };
+}
+
+// ---------------- 暴力求解器（验证每关可解） ----------------
+function solveLevel(idx, angStepDeg = 1, powSteps = 24) {
+  const L = LEVELS[idx];
+  const wins = [];
+  let tried = 0;
+  for (let a = 0; a < 360; a += angStepDeg) {
+    for (let k = 1; k <= powSteps; k++) {
+      const pow = L.maxPow * k / powSteps;
+      if (pow < 1) continue;
+      tried++;
+      const r = simulate(L, a * Math.PI / 180, pow);
+      if (r.result === 'win') wins.push({ angle: a, power: +pow.toFixed(2), steps: r.steps, dust: r.dustHit.length });
+    }
+  }
+  return { level: idx, name: L.name, tried, wins: wins.length, density: +(wins.length / tried * 100).toFixed(2),
+    samples: wins.slice(0, 4), bestDust: Math.max(0, ...wins.map(w => w.dust)) };
+}
+
+// ---------------- 游戏状态 ----------------
+const GT = {
+  scene: 'intro',       // intro | select | play | win
+  li: 0,
+  shots: 0,
+  dustGot: new Set(),   // 本关已收集（跨尝试累计）
+  aim: { angle: 0, power: 4, has: false },
+  dragging: false, dragPt: null,
+  flying: false, ft: 0, cx: 0, cy: 0, cvx: 0, cvy: 0, trail: [],
+  particles: [],
+  stars: JSON.parse(localStorage.getItem('gtStars') || '{}'),
+  fail: null,           // 上次失败标记 {x,y,kind}
+};
+window.GT = GT; window.LEVELS = LEVELS; window.simulate = simulate; window.solveLevel = solveLevel;
+
+const L = () => LEVELS[GT.li];
+
+// ---------------- 音效 ----------------
+let AC = null;
+function beep(f, dur = 0.08, type = 'sine', vol = 0.05) {
+  try {
+    if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)();
+    const o = AC.createOscillator(), g = AC.createGain();
+    o.type = type; o.frequency.value = f;
+    g.gain.setValueAtTime(vol, AC.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001, AC.currentTime + dur);
+    o.connect(g); g.connect(AC.destination); o.start(); o.stop(AC.currentTime + dur);
+  } catch (e) {}
+}
+const sfx = {
+  launch: () => beep(300, 0.15, 'triangle', 0.06),
+  crash:  () => beep(120, 0.25, 'sawtooth', 0.07),
+  hole:   () => { beep(500, 0.4, 'sine', 0.05); setTimeout(() => beep(240, 0.4), 120); setTimeout(() => beep(90, 0.5), 260); },
+  dust:   () => beep(1200, 0.07, 'sine', 0.05),
+  win:    () => [523, 659, 784, 1047, 1319].forEach((f, i) => setTimeout(() => beep(f, 0.16), i * 100)),
+  tick:   () => beep(880, 0.03, 'square', 0.02),
+};
+
+// ---------------- UI ----------------
+const $ = id => document.getElementById(id);
+function toast(msg, ms = 1500) {
+  const t = $('toast'); t.textContent = msg; t.style.opacity = 1;
+  clearTimeout(t._tm); t._tm = setTimeout(() => t.style.opacity = 0, ms);
+}
+function updateHud() {
+  $('lvHud').textContent = `第 ${GT.li + 1} 关 · ${L().name}`;
+  $('shotHud').textContent = `发射 ${GT.shots} / 标准 ${L().par}`;
+  $('dustHud').textContent = [0, 1, 2].map(i => GT.dustGot.has(i) ? '✦' : '✧').join(' ');
+  $('aimInfo').textContent = GT.aim.has
+    ? `${(GT.aim.angle * 180 / Math.PI).toFixed(1)}° · 力 ${GT.aim.power.toFixed(2)} / ${L().maxPow}`
+    : '拖拽瞄准';
+}
+function show(id) {
+  ['intro', 'levelSel', 'winPanel'].forEach(k => $(k).classList.add('hidden'));
+  if (id) $(id).classList.remove('hidden');
+}
+function buildLevelGrid() {
+  const g = $('lvGrid'); g.innerHTML = '';
+  LEVELS.forEach((lv, i) => {
+    const unlocked = i === 0 || (GT.stars[i - 1] || 0) >= 1;
+    const d = document.createElement('div');
+    d.className = 'lv' + (unlocked ? '' : ' locked');
+    d.innerHTML = `<div class="n">${i + 1}</div><div class="s">${'★'.repeat(GT.stars[i] || 0) || '·'}</div><div class="nm">${lv.name}</div>`;
+    if (unlocked) d.addEventListener('click', () => { loadLevel(i); show(null); });
+    g.appendChild(d);
+  });
+}
+function loadLevel(i) {
+  GT.li = i; GT.scene = 'play';
+  GT.shots = 0; GT.dustGot = new Set();
+  GT.flying = false; GT.trail = []; GT.fail = null;
+  GT.aim = { angle: 0, power: Math.min(4, L().maxPow), has: false };
+  const l = L();
+  GT.cx = l.start[0]; GT.cy = l.start[1];
+  updateHud();
+}
+
+// ---------------- 发射 / 飞行 ----------------
+function launch() {
+  if (GT.flying || GT.scene !== 'play' || !GT.aim.has) return;
+  GT.flying = true; GT.ft = 0; GT.shots++;
+  const l = L();
+  GT.cx = l.start[0]; GT.cy = l.start[1];
+  GT.cvx = Math.cos(GT.aim.angle) * GT.aim.power;
+  GT.cvy = Math.sin(GT.aim.angle) * GT.aim.power;
+  GT.trail = []; GT.fail = null;
+  GT.flightDust = new Set();
+  sfx.launch();
+  updateHud();
+}
+function endFlight(kind, px, py) {
+  GT.flying = false;
+  if (kind === 'crash') { sfx.crash(); burst(px, py, '#ff8a6b', 22); GT.fail = { x: px, y: py, kind }; toast('撞毁了 · 调整后再射'); }
+  if (kind === 'hole')  { sfx.hole(); spiral(px, py); GT.fail = { x: px, y: py, kind }; toast('被黑洞吞噬…'); }
+  if (kind === 'out')   { GT.fail = null; toast('飞出了星域'); }
+  if (kind === 'timeout') { GT.fail = null; toast('燃料耗尽（超时）'); }
+  if (kind === 'abort') { GT.fail = null; }
+  const l = L();
+  GT.cx = l.start[0]; GT.cy = l.start[1];
+  updateHud();
+}
+function winLevel() {
+  GT.flying = false; GT.scene = 'win';
+  sfx.win();
+  const dustAll = GT.dustGot.size >= 3;
+  const underPar = GT.shots <= L().par;
+  const stars = 1 + (underPar ? 1 : 0) + (dustAll ? 1 : 0);
+  const prev = GT.stars[GT.li] || 0;
+  if (stars > prev) { GT.stars[GT.li] = stars; localStorage.setItem('gtStars', JSON.stringify(GT.stars)); }
+  $('winTitle').textContent = `${L().name} · 完成`;
+  $('winStars').textContent = '★'.repeat(stars) + '☆'.repeat(3 - stars);
+  $('winDetail').textContent =
+    `发射 ${GT.shots} 次（标准 ${L().par}）${underPar ? '✓' : '✗'} · 星尘 ${GT.dustGot.size}/3 ${dustAll ? '✓' : '✗'}` +
+    (GT.li === LEVELS.length - 1 ? ' · 你征服了三体！' : '');
+  $('nextBtn').style.display = GT.li === LEVELS.length - 1 ? 'none' : '';
+  show('winPanel');
+  for (let i = 0; i < 6; i++) setTimeout(() => spawnMeteor(), i * 130);
+}
+
+// 飞行步进（与 simulate 完全同一套公式，保证预览=现实）
+function flightStep() {
+  const l = L();
+  GT.ft++;
+  const t = GT.ft;
+  let ax = 0, ay = 0;
+  for (const p of l.planets) {
+    const pp = bodyPos(p, t);
+    const dx = pp.x - GT.cx, dy = pp.y - GT.cy;
+    const d2 = dx * dx + dy * dy, d = Math.sqrt(d2);
+    if (d < p.r + COMET_R) { endFlight('crash', GT.cx, GT.cy); return; }
+    const a = G * p.r * p.r / d2;
+    ax += a * dx / d; ay += a * dy / d;
+  }
+  for (const h of l.holes) {
+    const hp = bodyPos(h, t);
+    const dx = hp.x - GT.cx, dy = hp.y - GT.cy;
+    const d2 = dx * dx + dy * dy, d = Math.sqrt(d2);
+    if (d < HOLE_KILL) { endFlight('hole', hp.x, hp.y); return; }
+    const a = G * HOLE_M / d2;
+    ax += a * dx / d; ay += a * dy / d;
+  }
+  GT.cvx += ax; GT.cvy += ay;
+  GT.cx += GT.cvx; GT.cy += GT.cvy;
+  l.dust.forEach((dpt, i) => {
+    if (!GT.dustGot.has(i)) {
+      const ddx = dpt[0] - GT.cx, ddy = dpt[1] - GT.cy;
+      if (ddx * ddx + ddy * ddy < DUST_R * DUST_R) {
+        GT.dustGot.add(i); sfx.dust(); burst(dpt[0], dpt[1], '#9fe8ff', 10); updateHud();
+      }
+    }
+  });
+  GT.trail.push({ x: GT.cx, y: GT.cy });
+  if (GT.trail.length > 260) GT.trail.shift();
+  const tdx = l.target[0] - GT.cx, tdy = l.target[1] - GT.cy;
+  if (tdx * tdx + tdy * tdy < TARGET_R * TARGET_R) { burst(l.target[0], l.target[1], '#ffd97a', 30); winLevel(); return; }
+  if (GT.cx < -OOB || GT.cx > VW + OOB || GT.cy < -OOB || GT.cy > VH + OOB) { endFlight('out'); return; }
+  if (GT.ft >= MAX_STEPS) { endFlight('timeout'); }
+}
+
+// ---------------- 粒子 / 流星 / 背景 ----------------
+function burst(x, y, color, n = 14) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.PI * 2 * i / n + (Math.random() - 0.5) * 0.5;
+    GT.particles.push({ x, y, vx: Math.cos(a) * (1 + Math.random() * 3.5), vy: Math.sin(a) * (1 + Math.random() * 3.5), life: 1, color });
+  }
+}
+function spiral(x, y) {
+  for (let i = 0; i < 20; i++) {
+    const a = i * 0.6;
+    GT.particles.push({ x: x + Math.cos(a) * 30, y: y + Math.sin(a) * 30,
+      vx: -Math.cos(a) * 1.5, vy: -Math.sin(a) * 1.5, life: 1, color: '#b88aff' });
+  }
+}
+let bgStars = [];
+function makeBgStars() {
+  bgStars = [];
+  const n = Math.min(200, Math.floor(W * H / 8000));
+  for (let i = 0; i < n; i++) bgStars.push({ x: Math.random() * W, y: Math.random() * H,
+    r: 0.4 + Math.random() * 1.3, base: 0.15 + Math.random() * 0.55, sp: 0.5 + Math.random() * 1.6, ph: Math.random() * 6.28 });
+}
+makeBgStars();
+const meteors = [];
+function spawnMeteor() {
+  const a = 2.3 + Math.random() * 0.4;
+  meteors.push({ x: W * (0.3 + Math.random() * 0.8), y: -20 + Math.random() * H * 0.3,
+    vx: Math.cos(a) * 11, vy: Math.sin(a) * 11, life: 1 });
+}
+
+// ---------------- 渲染 ----------------
+let lastT = performance.now();
+function frame(now) {
+  const dt = now - lastT; lastT = now;
+  const tt = now / 1000;
+
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, '#02030f'); grad.addColorStop(1, '#0a1030');
+  ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
+
+  for (const s of bgStars) {
+    ctx.globalAlpha = Math.max(0.04, s.base * (0.6 + 0.4 * Math.sin(tt * s.sp + s.ph)));
+    ctx.fillStyle = '#dde6ff';
+    ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, 6.283); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  if (Math.random() < 0.0018) spawnMeteor();
+  for (let i = meteors.length - 1; i >= 0; i--) {
+    const m = meteors[i];
+    m.x += m.vx; m.y += m.vy; m.life -= dt / 1200;
+    if (m.life <= 0 || m.y > H + 80) { meteors.splice(i, 1); continue; }
+    const g2 = ctx.createLinearGradient(m.x, m.y, m.x - m.vx * 8, m.y - m.vy * 8);
+    g2.addColorStop(0, 'rgba(255,255,255,0.85)'); g2.addColorStop(1, 'transparent');
+    ctx.strokeStyle = g2; ctx.lineWidth = 2; ctx.lineCap = 'round';
+    ctx.globalAlpha = Math.min(1, m.life * 1.4);
+    ctx.beginPath(); ctx.moveTo(m.x, m.y); ctx.lineTo(m.x - m.vx * 8, m.y - m.vy * 8); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  // 场地边界
+  ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+  ctx.strokeRect(vx(0), vy(0), VW * SC, VH * SC);
+
+  if (GT.scene === 'play' || GT.scene === 'win') drawWorld(tt);
+
+  // 粒子
+  for (let i = GT.particles.length - 1; i >= 0; i--) {
+    const p = GT.particles[i];
+    p.x += p.vx; p.y += p.vy; p.vx *= 0.97; p.vy *= 0.97; p.life -= dt / 800;
+    if (p.life <= 0) { GT.particles.splice(i, 1); continue; }
+    ctx.globalAlpha = Math.max(0, p.life);
+    ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(vx(p.x), vy(p.y), (2.6 * p.life + 0.6) * SC, 0, 6.283); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // 飞行推进（每帧多步）
+  if (GT.flying) { for (let k = 0; k < 5 && GT.flying; k++) flightStep(); }
+
+  requestAnimationFrame(frame);
+}
+
+function drawWorld(tt) {
+  const l = L();
+  const t = GT.flying ? GT.ft : 0;    // 时间静止：未飞行时天体停在初相位
+
+  // 轨道虚线
+  ctx.setLineDash([3 * SC, 6 * SC]);
+  ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+  ctx.lineWidth = 1;
+  for (const p of l.planets) if (p.orbit) {
+    ctx.beginPath(); ctx.arc(vx(p.orbit.cx), vy(p.orbit.cy), p.orbit.R * SC, 0, 6.283); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  // 行星
+  for (const p of l.planets) {
+    const pp = bodyPos(p, t);
+    const px = vx(pp.x), py = vy(pp.y), pr = p.r * SC;
+    const g3 = ctx.createRadialGradient(px - pr * 0.3, py - pr * 0.3, pr * 0.1, px, py, pr);
+    g3.addColorStop(0, '#8fb8ff'); g3.addColorStop(0.6, '#3a5ba0'); g3.addColorStop(1, '#17264d');
+    ctx.fillStyle = g3;
+    ctx.shadowColor = '#5d8aff'; ctx.shadowBlur = 20 * SC;
+    ctx.beginPath(); ctx.arc(px, py, pr, 0, 6.283); ctx.fill();
+    ctx.shadowBlur = 0;
+    // 引力范围提示圈
+    ctx.strokeStyle = 'rgba(140,180,255,0.1)';
+    ctx.beginPath(); ctx.arc(px, py, pr * 2.6, 0, 6.283); ctx.stroke();
+  }
+
+  // 黑洞
+  for (const h of l.holes) {
+    const hp = bodyPos(h, t);
+    const px = vx(hp.x), py = vy(hp.y);
+    for (let k = 0; k < 3; k++) {
+      const ang = tt * (2 + k) + k * 2.1;
+      ctx.strokeStyle = k === 0 ? '#b88aff' : '#6b4fa8';
+      ctx.globalAlpha = 0.7 - k * 0.15;
+      ctx.lineWidth = 2.2 * SC;
+      ctx.beginPath(); ctx.arc(px, py, (HOLE_KILL * 0.6 + k * 9) * SC, ang, ang + 4.2); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#000';
+    ctx.shadowColor = '#b88aff'; ctx.shadowBlur = 24 * SC;
+    ctx.beginPath(); ctx.arc(px, py, HOLE_KILL * 0.55 * SC, 0, 6.283); ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  // 星尘
+  l.dust.forEach((dpt, i) => {
+    if (GT.dustGot.has(i)) return;
+    const px = vx(dpt[0]), py = vy(dpt[1]);
+    const pulse = 0.8 + 0.2 * Math.sin(tt * 4 + i * 2);
+    ctx.fillStyle = '#9fe8ff';
+    ctx.shadowColor = '#9fe8ff'; ctx.shadowBlur = 10 * SC;
+    ctx.save(); ctx.translate(px, py); ctx.rotate(tt + i); ctx.scale(pulse, pulse);
+    ctx.beginPath();
+    for (let k = 0; k < 8; k++) {
+      const a = k * Math.PI / 4, r = (k % 2 === 0 ? 9 : 3.6) * SC;
+      ctx[k === 0 ? 'moveTo' : 'lineTo'](Math.cos(a) * r, Math.sin(a) * r);
+    }
+    ctx.closePath(); ctx.fill(); ctx.restore();
+    ctx.shadowBlur = 0;
+  });
+
+  // 目标星
+  const tx = vx(l.target[0]), ty = vy(l.target[1]);
+  const tp = 0.8 + 0.2 * Math.sin(tt * 3);
+  ctx.strokeStyle = `rgba(255,217,122,${tp})`;
+  ctx.lineWidth = 2 * SC;
+  ctx.shadowColor = '#ffd97a'; ctx.shadowBlur = 18 * SC;
+  ctx.beginPath(); ctx.arc(tx, ty, TARGET_R * SC * tp + 4, 0, 6.283); ctx.stroke();
+  ctx.fillStyle = '#ffd97a';
+  ctx.save(); ctx.translate(tx, ty); ctx.rotate(tt * 0.8);
+  ctx.beginPath();
+  for (let k = 0; k < 10; k++) {
+    const a = -Math.PI / 2 + k * Math.PI / 5, r = (k % 2 === 0 ? 16 : 7) * SC;
+    ctx[k === 0 ? 'moveTo' : 'lineTo'](Math.cos(a) * r, Math.sin(a) * r);
+  }
+  ctx.closePath(); ctx.fill(); ctx.restore();
+  ctx.shadowBlur = 0;
+
+  // 失败标记
+  if (GT.fail) {
+    ctx.strokeStyle = 'rgba(255,120,100,0.5)';
+    ctx.lineWidth = 1.5;
+    const fx = vx(GT.fail.x), fy = vy(GT.fail.y), s = 7 * SC;
+    ctx.beginPath(); ctx.moveTo(fx - s, fy - s); ctx.lineTo(fx + s, fy + s);
+    ctx.moveTo(fx + s, fy - s); ctx.lineTo(fx - s, fy + s); ctx.stroke();
+  }
+
+  // 瞄准预览（确定性：与真实飞行同公式）
+  if (!GT.flying && GT.scene === 'play' && GT.aim.has) {
+    const r = simulate(l, GT.aim.angle, GT.aim.power, 4, 460);
+    ctx.fillStyle = 'rgba(255,255,255,0.65)';
+    r.path.forEach((pt, i) => {
+      if (i % 2) return;
+      ctx.globalAlpha = Math.max(0.08, 0.65 - i / r.path.length * 0.6);
+      ctx.beginPath(); ctx.arc(vx(pt.x), vy(pt.y), 2 * SC, 0, 6.283); ctx.fill();
+    });
+    ctx.globalAlpha = 1;
+    // 力度弧
+    const sxp = vx(l.start[0]), syp = vy(l.start[1]);
+    ctx.strokeStyle = '#8fd4ff';
+    ctx.lineWidth = 3 * SC;
+    ctx.beginPath();
+    ctx.arc(sxp, syp, 26 * SC, GT.aim.angle - 0.5, GT.aim.angle - 0.5 + (GT.aim.power / l.maxPow));
+    ctx.stroke();
+  }
+
+  // 彗星轨迹
+  if (GT.trail.length > 1) {
+    ctx.lineWidth = 2.4 * SC; ctx.lineCap = 'round';
+    for (let i = 1; i < GT.trail.length; i++) {
+      const a = i / GT.trail.length;
+      ctx.strokeStyle = `rgba(159,216,255,${a * 0.8})`;
+      ctx.beginPath();
+      ctx.moveTo(vx(GT.trail[i - 1].x), vy(GT.trail[i - 1].y));
+      ctx.lineTo(vx(GT.trail[i].x), vy(GT.trail[i].y));
+      ctx.stroke();
+    }
+  }
+
+  // 彗星（未飞行时停在起点）
+  const cpx = vx(GT.cx), cpy = vy(GT.cy);
+  ctx.fillStyle = '#eaf4ff';
+  ctx.shadowColor = '#9fd8ff'; ctx.shadowBlur = 16 * SC;
+  ctx.beginPath(); ctx.arc(cpx, cpy, COMET_R * SC + 2, 0, 6.283); ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // 时间静止提示
+  if (!GT.flying && l.planets.some(p => p.orbit)) {
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.font = `${12 * SC}px "Microsoft YaHei", sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText('⏳ 时间静止 · 发射后轨道才会转动（每次发射从同一相位重演）', W / 2, vy(VH) - 10 * SC);
+  }
+}
+
+// ---------------- 输入 ----------------
+cv.addEventListener('pointerdown', e => {
+  if (GT.scene !== 'play') return;
+  if (GT.flying) { endFlight('abort'); toast('已中止'); return; }
+  GT.dragging = true;
+  GT.dragPt = { x: sx(e.clientX), y: sy(e.clientY) };
+});
+cv.addEventListener('pointermove', e => {
+  if (!GT.dragging || GT.scene !== 'play') return;
+  const l = L();
+  const mx = sx(e.clientX), my = sy(e.clientY);
+  const dx = mx - l.start[0], dy = my - l.start[1];
+  const d = Math.hypot(dx, dy);
+  if (d < 14) return;
+  GT.aim.angle = Math.atan2(dy, dx);
+  GT.aim.power = Math.min(l.maxPow, Math.max(1, d / 55));
+  GT.aim.has = true;
+  updateHud();
+});
+cv.addEventListener('pointerup', () => {
+  if (!GT.dragging) return;
+  GT.dragging = false;
+  if (GT.aim.has && !GT.flying) launch();
+});
+
+document.addEventListener('keydown', e => {
+  if (GT.scene !== 'play' || GT.flying) return;
+  if (!GT.aim.has && ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) {
+    GT.aim.has = true;   // 纯键盘党也能玩
+  }
+  const DA = Math.PI / 360;  // 0.5°
+  if (e.key === 'ArrowLeft')  { GT.aim.angle -= DA; sfx.tick(); }
+  else if (e.key === 'ArrowRight') { GT.aim.angle += DA; sfx.tick(); }
+  else if (e.key === 'ArrowUp')   { GT.aim.power = Math.min(L().maxPow, GT.aim.power + 0.1); sfx.tick(); }
+  else if (e.key === 'ArrowDown') { GT.aim.power = Math.max(1, GT.aim.power - 0.1); sfx.tick(); }
+  else if (e.key === 'Enter') { launch(); return; }
+  else if (e.key === 'r' || e.key === 'R') { GT.aim.has = false; updateHud(); return; }
+  else return;
+  e.preventDefault();
+  updateHud();
+});
+
+// ---------------- 手机端微调（长按连调） ----------------
+const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+if (isTouch) $('mctl').classList.add('on');
+
+function tune(act) {
+  if (GT.scene !== 'play' || GT.flying) return;
+  const DA = Math.PI / 360;
+  if (!GT.aim.has) GT.aim.has = true;
+  if (act === 'angL') GT.aim.angle -= DA;
+  else if (act === 'angR') GT.aim.angle += DA;
+  else if (act === 'powU') GT.aim.power = Math.min(L().maxPow, GT.aim.power + 0.1);
+  else if (act === 'powD') GT.aim.power = Math.max(1, GT.aim.power - 0.1);
+  sfx.tick();
+  updateHud();
+}
+document.querySelectorAll('.mbtn').forEach(b => {
+  const act = b.dataset.act;
+  if (act === 'go') { b.addEventListener('click', () => launch()); return; }
+  let rep = null;
+  const start = e => { e.preventDefault(); tune(act); rep = setInterval(() => tune(act), 120); };
+  const stop = () => { clearInterval(rep); rep = null; };
+  b.addEventListener('pointerdown', start);
+  b.addEventListener('pointerup', stop);
+  b.addEventListener('pointerleave', stop);
+  b.addEventListener('pointercancel', stop);
+});
+
+// 竖屏提示
+if (isTouch && innerHeight > innerWidth) {
+  setTimeout(() => toast('📱 横屏体验更佳', 2600), 800);
+}
+
+// ---------------- 按钮 ----------------
+$('playBtn').addEventListener('click', () => { loadLevel(0); show(null); if (AC && AC.state === 'suspended') AC.resume(); });
+$('menuBtn').addEventListener('click', () => { buildLevelGrid(); show('levelSel'); GT.scene = 'select'; });
+$('backBtn').addEventListener('click', () => { GT.scene = 'play'; show(null); });
+$('retryBtn').addEventListener('click', () => { if (GT.flying) endFlight('abort'); GT.aim.has = false; updateHud(); toast('重新瞄准'); });
+$('againBtn').addEventListener('click', () => { loadLevel(GT.li); show(null); });
+$('nextBtn').addEventListener('click', () => { loadLevel(Math.min(LEVELS.length - 1, GT.li + 1)); show(null); });
+
+updateHud();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
